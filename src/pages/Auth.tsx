@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { CheckCircle } from "lucide-react";
+import { CheckCircle, Mail } from "lucide-react";
 
 const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -16,7 +16,10 @@ const Auth = () => {
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
   const [signupSuccess, setSignupSuccess] = useState(false);
+  const [needsConfirmation, setNeedsConfirmation] = useState(false);
+  const [pendingEmail, setPendingEmail] = useState("");
   const { toast } = useToast();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -33,6 +36,23 @@ const Auth = () => {
     setFullName("");
     setPhone("");
     setSignupSuccess(false);
+    setNeedsConfirmation(false);
+    setPendingEmail("");
+  };
+
+  const handleResendConfirmation = async () => {
+    setResendLoading(true);
+    const { error } = await supabase.auth.resend({
+      type: "signup",
+      email: pendingEmail,
+      options: { emailRedirectTo: window.location.origin },
+    });
+    setResendLoading(false);
+    if (error) {
+      toast({ title: "Could not resend", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Verification email resent!", description: "Please check your inbox." });
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -46,10 +66,24 @@ const Auth = () => {
     setLoading(true);
 
     if (isLogin) {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) {
-        toast({ title: "Login failed", description: error.message, variant: "destructive" });
-      } else {
+        // Email not confirmed — show dedicated UI with resend button
+        if (
+          error.message.toLowerCase().includes("email not confirmed") ||
+          error.message.toLowerCase().includes("not confirmed")
+        ) {
+          setPendingEmail(email);
+          setNeedsConfirmation(true);
+        } else if (
+          error.message.toLowerCase().includes("invalid login") ||
+          error.message.toLowerCase().includes("invalid credentials")
+        ) {
+          toast({ title: "Login failed", description: "Incorrect email or password. Please try again.", variant: "destructive" });
+        } else {
+          toast({ title: "Login failed", description: error.message, variant: "destructive" });
+        }
+      } else if (data.session) {
         toast({ title: "Welcome back!" });
         navigate("/");
       }
@@ -64,9 +98,15 @@ const Auth = () => {
       });
 
       if (error) {
-        toast({ title: "Signup failed", description: error.message, variant: "destructive" });
+        if (error.message.toLowerCase().includes("already registered") || error.message.toLowerCase().includes("already been registered")) {
+          toast({ title: "Email already registered", description: "Please sign in instead, or use a different email.", variant: "destructive" });
+          setIsLogin(true);
+          setEmail(email);
+        } else {
+          toast({ title: "Signup failed", description: error.message, variant: "destructive" });
+        }
       } else {
-        // If phone was provided, also update the profiles table
+        // Update profile with phone if provided
         if (data.user && phone) {
           await supabase
             .from("profiles")
@@ -74,12 +114,13 @@ const Auth = () => {
             .eq("user_id", data.user.id);
         }
 
-        // If session is returned immediately (email confirmation disabled), redirect
+        // Session returned → email confirmation is OFF → log in directly
         if (data.session) {
           toast({ title: "Account created!", description: `Welcome, ${fullName || email}!` });
           navigate("/");
         } else {
-          // Email confirmation required — show success screen
+          // Email confirmation is ON → show verify screen
+          setPendingEmail(email);
           setSignupSuccess(true);
         }
       }
@@ -87,7 +128,37 @@ const Auth = () => {
     setLoading(false);
   };
 
-  // Success state after signup when email confirmation is required
+  // "Email not confirmed" screen shown when user tries to log in before verifying
+  if (needsConfirmation) {
+    return (
+      <main className="container py-16">
+        <div className="mx-auto max-w-md text-center">
+          <div className="rounded-xl border border-border bg-card p-8 shadow-card">
+            <Mail className="mx-auto mb-4 h-16 w-16 text-primary" />
+            <h1 className="font-display text-2xl font-bold text-foreground mb-2">Verify Your Email</h1>
+            <p className="text-muted-foreground mb-2">
+              Your account for <span className="font-medium text-foreground">{pendingEmail}</span> has not been verified yet.
+            </p>
+            <p className="text-sm text-muted-foreground mb-6">
+              Please check your inbox for the verification link and click it to activate your account. Then come back here to sign in.
+            </p>
+            <Button
+              className="w-full gradient-warm border-0 text-primary-foreground mb-3"
+              onClick={handleResendConfirmation}
+              disabled={resendLoading}
+            >
+              {resendLoading ? "Sending..." : "Resend Verification Email"}
+            </Button>
+            <Button variant="outline" className="w-full" onClick={() => switchMode(true)}>
+              Back to Sign In
+            </Button>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  // Success screen shown right after registration when email confirmation is required
   if (signupSuccess) {
     return (
       <main className="container py-16">
@@ -96,15 +167,19 @@ const Auth = () => {
             <CheckCircle className="mx-auto mb-4 h-16 w-16 text-green-500" />
             <h1 className="font-display text-2xl font-bold text-foreground mb-2">Account Created!</h1>
             <p className="text-muted-foreground mb-2">
-              We've sent a verification email to <span className="font-medium text-foreground">{email}</span>.
+              We've sent a verification email to <span className="font-medium text-foreground">{pendingEmail}</span>.
             </p>
             <p className="text-sm text-muted-foreground mb-6">
-              Please check your inbox and click the verification link to activate your account. You can then log in on this website and on the mobile app using the same credentials.
+              Click the link in the email to verify your account. Once verified, you can log in here and also on the mobile app using the same credentials.
             </p>
             <Button
-              className="w-full gradient-warm border-0 text-primary-foreground"
-              onClick={() => switchMode(true)}
+              className="w-full gradient-warm border-0 text-primary-foreground mb-3"
+              onClick={handleResendConfirmation}
+              disabled={resendLoading}
             >
+              {resendLoading ? "Sending..." : "Resend Verification Email"}
+            </Button>
+            <Button variant="outline" className="w-full" onClick={() => switchMode(true)}>
               Go to Sign In
             </Button>
           </div>
