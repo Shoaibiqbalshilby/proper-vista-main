@@ -1,0 +1,7 @@
+project_id = "zmlhilgybaikgfxcjnpw"
+
+[functions.notify-message]
+verify_jwt = false
+
+[functions.check-property-alerts]
+verify_jwt = false
