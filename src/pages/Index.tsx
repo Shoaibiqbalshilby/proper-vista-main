@@ -7,6 +7,7 @@ import PropertyCard from "@/components/PropertyCard";
 import { properties } from "@/lib/mockData";
 import { useState, useMemo } from "react";
 import { useDbProperties } from "@/hooks/useDbProperties";
+import { useSavedProperties } from "@/hooks/useSavedProperties";
 import heroBg from "@/assets/hero-bg.jpg";
 
 const categories = [
@@ -21,6 +22,7 @@ const Index = () => {
   const [searchLocation, setSearchLocation] = useState("");
   const [listingType, setListingType] = useState("");
   const { dbProperties } = useDbProperties();
+  const { isSaved, toggleSaved } = useSavedProperties();
 
   const featured = useMemo(() => {
     const allProps = [...dbProperties, ...properties];
@@ -116,7 +118,13 @@ const Index = () => {
         </div>
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {featured.map((p) => (
-            <PropertyCard key={p.id} property={p} />
+            <PropertyCard
+              key={p.id}
+              property={p}
+              showSaveButton={Boolean(p.userId)}
+              isSaved={isSaved(p.id)}
+              onToggleSave={toggleSaved}
+            />
           ))}
         </div>
       </section>

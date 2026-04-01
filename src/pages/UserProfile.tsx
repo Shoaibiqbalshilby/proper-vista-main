@@ -10,6 +10,7 @@ import { User, MapPin, Calendar, Bed, Bath, Maximize, Phone, Mail, Pencil, Edit 
 import { formatDistanceToNow } from "date-fns";
 import { propertyTypeLabels, listingTypeLabels } from "@/lib/mockData";
 import { useToast } from "@/hooks/use-toast";
+import { normalizeMediaUrls } from "@/lib/media";
 
 const statusLabels: Record<string, string> = {
   available: "Available",
@@ -64,7 +65,14 @@ interface DbProperty {
         supabase.from("properties").select("id, title, price_label, property_type, listing_type, location, bedrooms, bathrooms, area, images, created_at, status").eq("user_id", userId).order("created_at", { ascending: false }),
       ]);
       if (profileRes.data) setProfile(profileRes.data);
-      if (propertiesRes.data) setProperties(propertiesRes.data);
+      if (propertiesRes.data) {
+        setProperties(
+          propertiesRes.data.map((property) => ({
+            ...property,
+            images: normalizeMediaUrls(property.images),
+          }))
+        );
+      }
       setLoading(false);
     };
     fetchData();
@@ -152,7 +160,17 @@ interface DbProperty {
               <div className="rounded-xl border border-border bg-card overflow-hidden shadow-card hover:shadow-lg transition-shadow">
                 <div className="aspect-[16/10] bg-muted">
                   {prop.images.length > 0 ? (
-                    <img src={prop.images[0]} alt={prop.title} className="w-full h-full object-cover" loading="lazy" />
+                    <img
+                      src={prop.images[0]}
+                      alt={prop.title}
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                      onError={(e) => {
+                        const target = e.currentTarget;
+                        if (target.src.endsWith("/placeholder.svg")) return;
+                        target.src = "/placeholder.svg";
+                      }}
+                    />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-muted-foreground">No image</div>
                   )}

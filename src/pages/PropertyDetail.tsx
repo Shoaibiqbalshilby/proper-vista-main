@@ -39,7 +39,16 @@ const PropertyDetail = () => {
       {/* Image Gallery */}
       <div className="grid gap-3 mb-8 lg:grid-cols-[2fr_1fr]">
         <div className="aspect-[16/10] overflow-hidden rounded-xl">
-          <img src={property.images[activeImage]} alt={property.title} className="h-full w-full object-cover" />
+          <img
+            src={property.images[activeImage]}
+            alt={property.title}
+            className="h-full w-full object-cover"
+            onError={(e) => {
+              const target = e.currentTarget;
+              if (target.src.endsWith("/placeholder.svg")) return;
+              target.src = "/placeholder.svg";
+            }}
+          />
         </div>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-1 lg:grid-rows-2">
           {property.images.slice(0, 2).map((img, i) => (
@@ -48,7 +57,17 @@ const PropertyDetail = () => {
               onClick={() => setActiveImage(i === activeImage ? 0 : i)}
               className={`aspect-[16/10] lg:aspect-auto overflow-hidden rounded-xl border-2 transition-all ${i === activeImage ? "border-primary" : "border-transparent hover:border-border"}`}
             >
-              <img src={img} alt="" className="h-full w-full object-cover" loading="lazy" />
+              <img
+                src={img}
+                alt=""
+                className="h-full w-full object-cover"
+                loading="lazy"
+                onError={(e) => {
+                  const target = e.currentTarget;
+                  if (target.src.endsWith("/placeholder.svg")) return;
+                  target.src = "/placeholder.svg";
+                }}
+              />
             </button>
           ))}
         </div>

@@ -15,6 +15,13 @@ import Auth from "./pages/Auth";
 import Messages from "./pages/Messages";
 import UserProfile from "./pages/UserProfile";
 import Alerts from "./pages/Alerts";
+import MyProperties from "./pages/MyProperties";
+import SavedProperties from "./pages/SavedProperties";
+import SettingsPage from "./pages/SettingsPage";
+import NotificationSettings from "./pages/NotificationSettings";
+import PrivacySecurity from "./pages/PrivacySecurity";
+import HelpSupport from "./pages/HelpSupport";
+import BusinessProfile from "./pages/BusinessProfile";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -37,7 +44,14 @@ const App = () => (
               <Route path="/auth" element={<Auth />} />
               <Route path="/messages" element={<Messages />} />
               <Route path="/profile/:userId" element={<UserProfile />} />
+              <Route path="/my-properties" element={<MyProperties />} />
+              <Route path="/saved-properties" element={<SavedProperties />} />
               <Route path="/alerts" element={<Alerts />} />
+              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/notification-settings" element={<NotificationSettings />} />
+              <Route path="/privacy-security" element={<PrivacySecurity />} />
+              <Route path="/help-support" element={<HelpSupport />} />
+              <Route path="/business-profile" element={<BusinessProfile />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
             <Footer />

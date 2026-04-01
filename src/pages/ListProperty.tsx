@@ -75,6 +75,29 @@ const ListProperty = () => {
     return formatted;
   };
 
+  const uploadFilesToStorage = async (files: File[], folder: "images" | "videos") => {
+    const uploadedUrls: string[] = [];
+
+    for (const file of files) {
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const path = `${user?.id}/${folder}/${Date.now()}-${crypto.randomUUID()}-${safeName}`;
+
+      const { data, error } = await supabase.storage.from("property-media").upload(path, file, {
+        cacheControl: "3600",
+        upsert: false,
+      });
+
+      if (error || !data?.path) {
+        throw error || new Error("Upload failed");
+      }
+
+      const { data: publicData } = supabase.storage.from("property-media").getPublicUrl(data.path);
+      uploadedUrls.push(publicData.publicUrl);
+    }
+
+    return uploadedUrls;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !propertyType || !listingType) return;
@@ -82,6 +105,8 @@ const ListProperty = () => {
     setSubmitting(true);
     try {
       const priceNum = Number(price);
+      const uploadedImageUrls = await uploadFilesToStorage(images.map((img) => img.file), "images");
+      const uploadedVideoUrls = await uploadFilesToStorage(videos.map((vid) => vid.file), "videos");
       let computedArea = Number(area) || 0;
       const landFeatures: string[] = [];
       if (propertyType === "land" && landSize) {
@@ -105,8 +130,8 @@ const ListProperty = () => {
         bedrooms: Number(bedrooms) || 0,
         bathrooms: Number(bathrooms) || 0,
         area: computedArea,
-        images: images.map((img) => img.preview),
-        videos: videos.map((vid) => vid.preview),
+        images: uploadedImageUrls,
+        videos: uploadedVideoUrls,
         features: landFeatures,
       });
 

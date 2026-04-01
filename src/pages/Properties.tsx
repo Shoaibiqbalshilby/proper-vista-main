@@ -10,6 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import PropertyCard from "@/components/PropertyCard";
 import { properties, propertyTypeLabels, listingTypeLabels, PropertyType, ListingType, nigerianLocations } from "@/lib/mockData";
 import { useDbProperties } from "@/hooks/useDbProperties";
+import { useSavedProperties } from "@/hooks/useSavedProperties";
 import { Search, SlidersHorizontal, X, MapPin } from "lucide-react";
 import CreateAlertDialog from "@/components/CreateAlertDialog";
 import { useAuth } from "@/contexts/AuthContext";
@@ -29,6 +30,7 @@ const Properties = () => {
   const [newlyListed, setNewlyListed] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const { dbProperties } = useDbProperties();
+  const { isSaved, toggleSaved } = useSavedProperties();
   const { user } = useAuth();
 
   const allProperties = useMemo(() => [...dbProperties, ...properties], [dbProperties]);
@@ -216,7 +218,15 @@ const Properties = () => {
       <p className="mb-4 text-sm text-muted-foreground">{filtered.length} {filtered.length === 1 ? "property" : "properties"} found</p>
       {filtered.length > 0 ? (
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((p) => <PropertyCard key={p.id} property={p} />)}
+          {filtered.map((p) => (
+            <PropertyCard
+              key={p.id}
+              property={p}
+              showSaveButton={Boolean(p.userId)}
+              isSaved={isSaved(p.id)}
+              onToggleSave={toggleSaved}
+            />
+          ))}
         </div>
       ) : (
         <div className="flex flex-col items-center justify-center py-20 text-center">

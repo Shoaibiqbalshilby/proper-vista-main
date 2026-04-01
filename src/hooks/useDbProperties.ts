@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Property } from "@/lib/mockData";
+import { normalizeMediaUrls } from "@/lib/media";
 
 export function useDbProperties() {
   const [dbProperties, setDbProperties] = useState<Property[]>([]);
@@ -47,6 +48,7 @@ export function useDbProperties() {
           const profile = profileMap.get(row.user_id);
           return {
             id: row.id,
+            userId: row.user_id,
             title: row.title || "Untitled Property",
             description: row.description || "",
             price,
@@ -58,8 +60,8 @@ export function useDbProperties() {
             bedrooms: Number(row.bedrooms ?? 0),
             bathrooms: Number(row.bathrooms ?? 0),
             area: Number(row.area ?? 0),
-            images: Array.isArray(row.images) && row.images.length > 0 ? row.images.filter(Boolean) : ["/placeholder.svg"],
-            videos: (row as any).videos || [],
+            images: normalizeMediaUrls(row.images),
+            videos: normalizeMediaUrls((row as any).videos),
             features: row.features || [],
             nearbyPlaces: [],
             agent: {

@@ -3,6 +3,7 @@ export type ListingType = "sale" | "rent" | "short-let";
 
 export interface Property {
   id: string;
+  userId?: string;
   title: string;
   description: string;
   price: number;

@@ -1,11 +1,15 @@
 import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Bed, Bath, Maximize, MapPin } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Bed, Bath, Heart, Maximize, MapPin } from "lucide-react";
 import { Property, listingTypeLabels } from "@/lib/mockData";
 
 interface PropertyCardProps {
   property: Property;
+  isSaved?: boolean;
+  onToggleSave?: (propertyId: string) => void;
+  showSaveButton?: boolean;
 }
 
 const listingBadgeVariant = (type: string) => {
@@ -14,7 +18,7 @@ const listingBadgeVariant = (type: string) => {
   return "outline";
 };
 
-const PropertyCard = ({ property }: PropertyCardProps) => (
+const PropertyCard = ({ property, isSaved = false, onToggleSave, showSaveButton = false }: PropertyCardProps) => (
   <Link to={`/property/${property.id}`} className="group block">
     <div className="overflow-hidden rounded-lg border border-border bg-card shadow-card transition-all duration-300 hover:shadow-card-hover hover:-translate-y-1">
       <div className="relative aspect-[4/3] overflow-hidden">
@@ -23,6 +27,11 @@ const PropertyCard = ({ property }: PropertyCardProps) => (
           alt={property.title}
           className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
           loading="lazy"
+          onError={(e) => {
+            const target = e.currentTarget;
+            if (target.src.endsWith("/placeholder.svg")) return;
+            target.src = "/placeholder.svg";
+          }}
         />
         <div className="absolute top-3 left-3 flex gap-2">
           <Badge variant={listingBadgeVariant(property.listingType)}>
@@ -32,6 +41,21 @@ const PropertyCard = ({ property }: PropertyCardProps) => (
             <Badge className="gradient-warm border-0 text-primary-foreground">Featured</Badge>
           )}
         </div>
+        {showSaveButton && onToggleSave && (
+          <Button
+            type="button"
+            variant="secondary"
+            size="icon"
+            className="absolute right-3 top-3 h-8 w-8 rounded-full bg-card/95"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onToggleSave(property.id);
+            }}
+          >
+            <Heart className={`h-4 w-4 ${isSaved ? "fill-current text-primary" : "text-muted-foreground"}`} />
+          </Button>
+        )}
       </div>
       <div className="p-4">
         <p className="font-display text-xl font-bold text-primary">{property.priceLabel}</p>

@@ -52,6 +52,42 @@ export type Database = {
           },
         ]
       }
+      business_profiles: {
+        Row: {
+          address: string | null
+          company_name: string | null
+          contact_phone: string | null
+          created_at: string
+          description: string | null
+          id: string
+          updated_at: string
+          user_id: string
+          whatsapp_number: string | null
+        }
+        Insert: {
+          address?: string | null
+          company_name?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          updated_at?: string
+          user_id: string
+          whatsapp_number?: string | null
+        }
+        Update: {
+          address?: string | null
+          company_name?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          updated_at?: string
+          user_id?: string
+          whatsapp_number?: string | null
+        }
+        Relationships: []
+      }
       messages: {
         Row: {
           created_at: string
@@ -237,6 +273,35 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      saved_properties: {
+        Row: {
+          created_at: string
+          id: string
+          property_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          property_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          property_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "saved_properties_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {

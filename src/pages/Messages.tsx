@@ -89,9 +89,22 @@ const Messages = () => {
       {fetching ? (
         <p className="text-muted-foreground">Loading messages...</p>
       ) : messages.length === 0 ? (
-        <div className="text-center py-16">
-          <Mail className="h-12 w-12 text-muted-foreground/40 mx-auto mb-4" />
-          <p className="text-muted-foreground">No messages yet.</p>
+        <div className="mx-auto max-w-3xl py-12">
+          <div className="rounded-3xl border border-border bg-gradient-to-br from-card to-secondary/30 p-8 md:p-10">
+            <h2 className="font-display text-4xl font-bold text-foreground">No messages yet</h2>
+            <p className="mt-4 max-w-2xl text-lg text-muted-foreground">
+              Your conversations with buyers and agents will appear here once messaging is enabled.
+            </p>
+
+            <div className="mt-8 grid gap-3 sm:grid-cols-2">
+              <Link to="/my-properties">
+                <Button className="h-12 w-full gradient-warm border-0 text-primary-foreground text-base">Open My Properties</Button>
+              </Link>
+              <Link to="/saved-properties">
+                <Button variant="outline" className="h-12 w-full text-base">Go to Favorites</Button>
+              </Link>
+            </div>
+          </div>
         </div>
       ) : (
         <div className="grid gap-6 lg:grid-cols-[1fr_1.5fr]">
