@@ -24,9 +24,9 @@ export function useDbProperties() {
       const { data: profilesData } = userIds.length
         ? await supabase
             .from("profiles")
-            .select("user_id, full_name, avatar_url")
+            .select("user_id, full_name, avatar_url, phone")
             .in("user_id", userIds)
-        : { data: [] as { user_id: string; full_name: string | null; avatar_url: string | null }[] };
+        : { data: [] as { user_id: string; full_name: string | null; avatar_url: string | null; phone: string | null }[] };
 
       const profileMap = new Map(
         (profilesData || []).map((p) => [p.user_id, p])
@@ -67,7 +67,7 @@ export function useDbProperties() {
             agent: {
               name: profile?.full_name || "Property Owner",
               company: "",
-              phone: "",
+              phone: profile?.phone || "",
               email: "",
               avatar: profile?.avatar_url || "/placeholder.svg",
             },

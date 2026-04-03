@@ -9,12 +9,74 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Building2, Loader2 } from "lucide-react";
 
+type BusinessProfileRow = {
+  id: string;
+  company_name: string | null;
+  description: string | null;
+  contact_phone: string | null;
+  whatsapp_number: string | null;
+  address: string | null;
+};
+
+type BusinessProfilePayload = {
+  company_name: string | null;
+  description: string | null;
+  contact_phone: string | null;
+  whatsapp_number: string | null;
+  address: string | null;
+};
+
+const isMissingBusinessProfilesTableError = (error: { message?: string; code?: string } | null) => {
+  if (!error) return false;
+
+  return error.code === "PGRST205" || error.message?.includes("business_profiles") || false;
+};
+
+const getMetadataBusinessProfile = (metadata: unknown): BusinessProfilePayload | null => {
+  if (!metadata || typeof metadata !== "object") return null;
+
+  const meta = metadata as Record<string, unknown>;
+
+  // Helper that searches multiple sources for a field value
+  const readFrom = (sources: Record<string, unknown>[], ...keys: string[]): string | null => {
+    for (const source of sources) {
+      for (const key of keys) {
+        const value = source[key];
+        if (typeof value === "string" && value.trim().length > 0) return value;
+      }
+    }
+    return null;
+  };
+
+  // Nested under business_profile (mobile primary fallback key)
+  const nested =
+    meta.business_profile && typeof meta.business_profile === "object"
+      ? (meta.business_profile as Record<string, unknown>)
+      : null;
+
+  // Sources: nested object first, then flat user_metadata
+  const sources: Record<string, unknown>[] = nested ? [nested, meta] : [meta];
+
+  const result: BusinessProfilePayload = {
+    company_name: readFrom(sources, "company_name", "companyName", "name"),
+    description: readFrom(sources, "description", "about"),
+    contact_phone: readFrom(sources, "contact_phone", "contactPhone", "phone", "contact"),
+    whatsapp_number: readFrom(sources, "whatsapp_number", "whatsAppNumber", "whatsappNumber", "whatsapp"),
+    address: readFrom(sources, "address", "location"),
+  };
+
+  // Return null only if absolutely nothing was found
+  const hasAnyValue = Object.values(result).some((v) => v !== null);
+  return hasAnyValue ? result : null;
+};
+
 const BusinessProfile = () => {
   const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [profileId, setProfileId] = useState<string | null>(null);
 
   const [companyName, setCompanyName] = useState("");
   const [description, setDescription] = useState("");
@@ -22,25 +84,68 @@ const BusinessProfile = () => {
   const [whatsAppNumber, setWhatsAppNumber] = useState("");
   const [address, setAddress] = useState("");
 
+  const applyProfileToForm = (profile: BusinessProfileRow | null) => {
+    setProfileId(profile?.id ?? null);
+    setCompanyName(profile?.company_name ?? "");
+    setDescription(profile?.description ?? "");
+    setContactPhone(profile?.contact_phone ?? "");
+    setWhatsAppNumber(profile?.whatsapp_number ?? "");
+    setAddress(profile?.address ?? "");
+  };
+
+  const buildProfilePayload = (): BusinessProfilePayload => {
+    const normalizeField = (value: string) => {
+      const trimmedValue = value.trim();
+      return trimmedValue.length > 0 ? trimmedValue : null;
+    };
+
+    return {
+      company_name: normalizeField(companyName),
+      description: normalizeField(description),
+      contact_phone: normalizeField(contactPhone),
+      whatsapp_number: normalizeField(whatsAppNumber),
+      address: normalizeField(address),
+    };
+  };
+
+  const loadLatestMetadataProfile = async () => {
+    const { data, error } = await supabase.auth.getUser();
+
+    const meta = error
+      ? user?.user_metadata
+      : (data.user?.user_metadata ?? user?.user_metadata);
+
+    return getMetadataBusinessProfile(meta);
+  };
+
   useEffect(() => {
     const loadBusinessProfile = async () => {
       if (!user) {
+        applyProfileToForm(null);
         setLoading(false);
         return;
       }
 
-      const { data } = await supabase
+      setLoading(true);
+
+      const { data, error } = await supabase
         .from("business_profiles")
-        .select("company_name, description, contact_phone, whatsapp_number, address")
+        .select("id, company_name, description, contact_phone, whatsapp_number, address")
         .eq("user_id", user.id)
         .maybeSingle();
 
-      if (data) {
-        setCompanyName(data.company_name ?? "");
-        setDescription(data.description ?? "");
-        setContactPhone(data.contact_phone ?? "");
-        setWhatsAppNumber(data.whatsapp_number ?? "");
-        setAddress(data.address ?? "");
+      if (error) {
+        if (isMissingBusinessProfilesTableError(error)) {
+          applyProfileToForm(await loadLatestMetadataProfile());
+        } else {
+          toast({
+            title: "Unable to load profile",
+            description: error.message,
+            variant: "destructive",
+          });
+        }
+      } else {
+        applyProfileToForm(data ?? null);
       }
 
       setLoading(false);
@@ -54,27 +159,97 @@ const BusinessProfile = () => {
     if (!user) return;
 
     setSaving(true);
-    const { error } = await supabase.from("business_profiles").upsert(
-      {
-        user_id: user.id,
-        company_name: companyName.trim(),
-        description: description.trim(),
-        contact_phone: contactPhone.trim(),
-        whatsapp_number: whatsAppNumber.trim(),
-        address: address.trim(),
-      },
-      { onConflict: "user_id" }
-    );
+
+    const payload = buildProfilePayload();
+    const { data: existingProfile, error: lookupError } = await supabase
+      .from("business_profiles")
+      .select("id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (lookupError) {
+      if (isMissingBusinessProfilesTableError(lookupError)) {
+        const { data: authData, error: authError } = await supabase.auth.updateUser({
+          data: {
+            ...user.user_metadata,
+            business_profile: payload,
+          },
+        });
+
+        setSaving(false);
+
+        if (authError) {
+          toast({
+            title: "Unable to save",
+            description: authError.message,
+            variant: "destructive",
+          });
+          return;
+        }
+
+        applyProfileToForm(getMetadataBusinessProfile(authData.user?.user_metadata) ?? payload);
+        toast({
+          title: "Saved",
+          description: "Business profile updated successfully.",
+        });
+        return;
+      }
+
+      setSaving(false);
+      toast({
+        title: "Unable to save",
+        description: lookupError.message,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const saveQuery = existingProfile?.id
+      ? supabase
+          .from("business_profiles")
+          .update(payload)
+          .eq("id", existingProfile.id)
+          .eq("user_id", user.id)
+      : supabase.from("business_profiles").insert({
+          user_id: user.id,
+          ...payload,
+        });
+
+    const { error } = await saveQuery;
 
     setSaving(false);
 
     if (error) {
       toast({
         title: "Unable to save",
-        description: "Please try again.",
+        description: error.message,
         variant: "destructive",
       });
       return;
+    }
+
+    if (existingProfile?.id !== profileId) {
+      setProfileId(existingProfile?.id ?? profileId);
+    }
+
+    const { data: refreshedProfile, error: refreshError } = await supabase
+      .from("business_profiles")
+      .select("id, company_name, description, contact_phone, whatsapp_number, address")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (refreshError) {
+      if (isMissingBusinessProfilesTableError(refreshError)) {
+        applyProfileToForm(payload);
+      } else {
+        toast({
+          title: "Saved with sync warning",
+          description: refreshError.message,
+          variant: "destructive",
+        });
+      }
+    } else {
+      applyProfileToForm(refreshedProfile ?? null);
     }
 
     toast({

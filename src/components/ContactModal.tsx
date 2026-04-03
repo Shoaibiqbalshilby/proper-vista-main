@@ -3,7 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -15,6 +16,11 @@ interface ContactModalProps {
   property: Property;
 }
 
+const getDefaultMessage = (property: Property) =>
+  `Hi, I'm interested in the property "${property.title}" listed at ${property.priceLabel} in ${property.location}. Please share more details. Thank you!`;
+
+const getUserMetadataText = (value: unknown) => (typeof value === "string" ? value : "");
+
 const ContactModal = ({ open, onOpenChange, property }: ContactModalProps) => {
   const { toast } = useToast();
   const { user } = useAuth();
@@ -23,59 +29,140 @@ const ContactModal = ({ open, onOpenChange, property }: ContactModalProps) => {
     name: "",
     email: "",
     phone: "",
-    message: `Hi, I'm interested in the property "${property.title}" listed at ${property.priceLabel} in ${property.location}. Please share more details. Thank you!`,
+    message: getDefaultMessage(property),
   });
+
+  useEffect(() => {
+    setForm((currentForm) => ({
+      ...currentForm,
+      message: getDefaultMessage(property),
+    }));
+  }, [property.id, property.location, property.priceLabel, property.title]);
+
+  useEffect(() => {
+    if (!user) {
+      setForm((currentForm) => ({
+        ...currentForm,
+        name: "",
+        email: "",
+        phone: "",
+      }));
+      return;
+    }
+
+    let ignore = false;
+
+    const loadSenderProfile = async () => {
+      const { data } = await supabase
+        .from("profiles")
+        .select("full_name, phone")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (ignore) return;
+
+      setForm((currentForm) => ({
+        ...currentForm,
+        name:
+          currentForm.name ||
+          data?.full_name ||
+          getUserMetadataText(user.user_metadata?.full_name) ||
+          user.email?.split("@")[0] ||
+          "",
+        email: currentForm.email || user.email || "",
+        phone: currentForm.phone || data?.phone || getUserMetadataText(user.user_metadata?.phone),
+      }));
+    };
+
+    void loadSenderProfile();
+
+    return () => {
+      ignore = true;
+    };
+  }, [user]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.name.trim() || !form.email.trim()) return;
+
+    if (!user) {
+      toast({
+        title: "Sign in required",
+        description: "Please sign in to send messages and receive replies on the website.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!property.userId) {
+      toast({
+        title: "Messaging unavailable",
+        description: "This listing is not linked to a website account yet, so in-app messaging is not available.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (property.userId === user.id) {
+      toast({
+        title: "Cannot message yourself",
+        description: "Open your Messages inbox to view buyer conversations for this listing.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!form.name.trim() || !form.email.trim() || !form.message.trim()) {
+      toast({
+        title: "Missing details",
+        description: "Name, email, and message are required.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     setSending(true);
 
     try {
-      if (user) {
-        // Find recipient user by agent email (if they exist in the system)
-        // For now, store with a placeholder recipient — in production, properties would have a user_id
-        const { data: recipientProfile } = await supabase
-          .from("profiles")
-          .select("user_id")
-          .limit(1);
+      const { error: msgError } = await supabase.from("messages").insert({
+        sender_id: user.id,
+        recipient_id: property.userId,
+        property_id: property.id,
+        property_title: property.title,
+        sender_name: form.name.trim(),
+        sender_email: form.email.trim(),
+        sender_phone: form.phone.trim() || null,
+        message: form.message.trim(),
+      });
 
-        // Store message in database
-        const { error: msgError } = await supabase.from("messages").insert({
-          sender_id: user.id,
-          recipient_id: recipientProfile?.[0]?.user_id || user.id, // fallback to self for demo
-          property_id: property.id,
-          property_title: property.title,
-          sender_name: form.name,
-          sender_email: form.email,
-          sender_phone: form.phone || null,
-          message: form.message,
-        });
+      if (msgError) throw msgError;
 
-        if (msgError) throw msgError;
-
-        // Trigger email notification
-        await supabase.functions.invoke("notify-message", {
-          body: {
-            recipientEmail: property.agent.email,
-            senderName: form.name,
-            propertyTitle: property.title,
-            message: form.message,
-          },
-        });
+      if (property.agent.email) {
+        await supabase.functions
+          .invoke("notify-message", {
+            body: {
+              recipientEmail: property.agent.email,
+              senderName: form.name.trim(),
+              propertyTitle: property.title,
+              message: form.message.trim(),
+            },
+          })
+          .catch(() => undefined);
       }
 
       toast({
         title: "Message Sent!",
-        description: `Your message has been sent to ${property.agent.name}. They'll get back to you soon.`,
+        description: `Your message has been saved and sent to ${property.agent.name || "the property owner"}. Replies will appear in your Messages inbox.`,
       });
+      setForm((currentForm) => ({
+        ...currentForm,
+        message: getDefaultMessage(property),
+      }));
       onOpenChange(false);
     } catch (error: any) {
       console.error("Error sending message:", error);
       toast({
         title: "Error",
-        description: "Failed to send message. Please try again.",
+        description: error.message || "Failed to send message. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -94,7 +181,12 @@ const ContactModal = ({ open, onOpenChange, property }: ContactModalProps) => {
         </DialogHeader>
         {!user && (
           <p className="text-sm text-muted-foreground bg-muted/50 rounded-md p-3">
-            💡 <a href="/auth" className="underline text-primary">Sign in</a> to save messages to your account and get replies in your inbox.
+            <Link to="/auth" className="underline text-primary">Sign in</Link> to save messages to your account and receive replies in your website inbox.
+          </p>
+        )}
+        {user && !property.userId && (
+          <p className="text-sm text-muted-foreground bg-muted/50 rounded-md p-3">
+            This listing is not linked to a website owner account yet, so message threads cannot be created from the web app.
           </p>
         )}
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -142,7 +234,7 @@ const ContactModal = ({ open, onOpenChange, property }: ContactModalProps) => {
               maxLength={1000}
             />
           </div>
-          <Button type="submit" className="w-full gradient-warm border-0 text-primary-foreground" disabled={sending}>
+          <Button type="submit" className="w-full gradient-warm border-0 text-primary-foreground" disabled={sending || !property.userId || !user}>
             {sending ? "Sending..." : "Send Message"}
           </Button>
         </form>
