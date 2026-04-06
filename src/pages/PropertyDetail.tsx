@@ -1,11 +1,31 @@
 import { useParams, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { properties, listingTypeLabels, propertyTypeLabels } from "@/lib/mockData";
 import { Bed, Bath, Maximize, MapPin, Phone, Mail, ArrowLeft, MessageSquare, Check, School, Hospital, ShoppingBag, TreePine, Play } from "lucide-react";
 import ContactModal from "@/components/ContactModal";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useDbProperties } from "@/hooks/useDbProperties";
+import { supabase } from "@/integrations/supabase/client";
+
+type PropertyOwnerDetails = {
+  userId: string;
+  fullName: string | null;
+  phone: string | null;
+  companyName: string | null;
+  email: string | null;
+  avatarUrl: string | null;
+};
 
 const PropertyDetail = () => {
   const { id } = useParams();
@@ -13,7 +33,53 @@ const PropertyDetail = () => {
   const allProperties = useMemo(() => [...dbProperties, ...properties], [dbProperties]);
   const property = allProperties.find((p) => p.id === id);
   const [contactOpen, setContactOpen] = useState(false);
+  const [callOpen, setCallOpen] = useState(false);
   const [activeImage, setActiveImage] = useState(0);
+  const [ownerDetails, setOwnerDetails] = useState<PropertyOwnerDetails | null>(null);
+
+  useEffect(() => {
+    if (!property?.id) {
+      setOwnerDetails(null);
+      return;
+    }
+
+    let ignore = false;
+    setOwnerDetails(null);
+
+    const loadOwnerDetails = async () => {
+      const { data, error } = await supabase.rpc("get_property_owner_details", {
+        p_property_id: property.id,
+      });
+
+      if (ignore) return;
+
+      if (error) {
+        setOwnerDetails(null);
+        return;
+      }
+
+      const ownerData = data?.[0] ?? null;
+      if (!ownerData?.owner_user_id) {
+        setOwnerDetails(null);
+        return;
+      }
+
+      setOwnerDetails({
+        userId: ownerData.owner_user_id,
+        fullName: ownerData.owner_name ?? ownerData.owner_company_name ?? null,
+        phone: ownerData.owner_phone ?? null,
+        companyName: ownerData.owner_company_name ?? null,
+        email: ownerData.owner_email ?? null,
+        avatarUrl: ownerData.owner_avatar_url ?? null,
+      });
+    };
+
+    void loadOwnerDetails();
+
+    return () => {
+      ignore = true;
+    };
+  }, [property?.id]);
 
   if (!property) {
     return (
@@ -23,6 +89,22 @@ const PropertyDetail = () => {
       </main>
     );
   }
+
+  const listedByName = ownerDetails?.fullName || property.agent.name || "Property Owner";
+  const listedByCompany = ownerDetails?.companyName || property.agent.company || "";
+  const listedByPhone = ownerDetails?.phone || property.agent.phone || "";
+  const listedByEmail = ownerDetails?.email || property.agent.email || "";
+  const listedByAvatar = ownerDetails?.avatarUrl || property.agent.avatar || "/placeholder.svg";
+  const listedByProfilePath = ownerDetails?.userId ? `/profile/${ownerDetails.userId}` : property.userId ? `/profile/${property.userId}` : null;
+  const listedByCard = (
+    <>
+      <img src={listedByAvatar} alt={listedByName} className="h-12 w-12 rounded-full object-cover" />
+      <div>
+        <p className="font-semibold text-foreground">{listedByName}</p>
+        {listedByCompany && <p className="text-sm text-muted-foreground">{listedByCompany}</p>}
+      </div>
+    </>
+  );
 
   return (
     <main className="container py-8">
@@ -179,20 +261,33 @@ const PropertyDetail = () => {
         <div className="lg:sticky lg:top-24 h-fit">
           <div className="rounded-xl border border-border bg-card p-6 shadow-card">
             <h3 className="font-display text-lg font-semibold text-foreground mb-4">Listed by</h3>
-            <Link
-              to={`/profile/${property.agent.name.toLowerCase().replace(/\s+/g, '-')}`}
-              className="flex items-center gap-3 mb-4 rounded-lg p-2 -mx-2 transition-colors hover:bg-accent"
-            >
-              <img src={property.agent.avatar} alt={property.agent.name} className="h-12 w-12 rounded-full object-cover" />
-              <div>
-                <p className="font-semibold text-foreground">{property.agent.name}</p>
-                <p className="text-sm text-muted-foreground">{property.agent.company}</p>
+            {listedByProfilePath ? (
+              <Link
+                to={listedByProfilePath}
+                className="flex items-center gap-3 mb-4 rounded-lg p-2 -mx-2 transition-colors hover:bg-accent"
+              >
+                {listedByCard}
+              </Link>
+            ) : (
+              <div className="flex items-center gap-3 mb-4 rounded-lg p-2 -mx-2">
+                {listedByCard}
               </div>
-            </Link>
-            <div className="space-y-2 text-sm text-muted-foreground mb-6">
-              <p className="flex items-center gap-2"><Phone className="h-4 w-4" /> {property.agent.phone}</p>
-              <p className="flex items-center gap-2"><Mail className="h-4 w-4" /> {property.agent.email}</p>
-            </div>
+            )}
+            {(listedByPhone || listedByEmail) && (
+              <div className="space-y-2 text-sm text-muted-foreground mb-6">
+                {listedByPhone && <p className="flex items-center gap-2"><Phone className="h-4 w-4" /> {listedByPhone}</p>}
+                {listedByEmail && <p className="flex items-center gap-2"><Mail className="h-4 w-4" /> {listedByEmail}</p>}
+              </div>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setCallOpen(true)}
+              className="mb-3 w-full gap-2"
+              disabled={!listedByPhone}
+            >
+              <Phone className="h-4 w-4" /> Call Owner
+            </Button>
             <Button
               onClick={() => setContactOpen(true)}
               className="w-full gradient-warm border-0 text-primary-foreground gap-2"
@@ -204,6 +299,35 @@ const PropertyDetail = () => {
       </div>
 
       <ContactModal open={contactOpen} onOpenChange={setContactOpen} property={property} />
+
+      <AlertDialog open={callOpen} onOpenChange={setCallOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Call Property Owner</AlertDialogTitle>
+            <AlertDialogDescription>
+              Use the number below to contact {listedByName}{listedByCompany ? ` at ${listedByCompany}` : ""}.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="rounded-md border border-border bg-muted/40 p-4">
+            <p className="text-sm text-muted-foreground">Phone number</p>
+            <p className="mt-1 text-lg font-semibold text-foreground">{listedByPhone || "Phone number not available"}</p>
+            {listedByEmail && <p className="mt-2 text-sm text-muted-foreground">{listedByEmail}</p>}
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Close</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (listedByPhone) {
+                  window.location.href = `tel:${listedByPhone}`;
+                }
+              }}
+              disabled={!listedByPhone}
+            >
+              Call Now
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </main>
   );
 };

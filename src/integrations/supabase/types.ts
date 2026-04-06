@@ -308,7 +308,19 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_property_owner_details: {
+        Args: {
+          p_property_id: string
+        }
+        Returns: {
+          owner_avatar_url: string | null
+          owner_company_name: string | null
+          owner_email: string | null
+          owner_name: string | null
+          owner_phone: string | null
+          owner_user_id: string | null
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never

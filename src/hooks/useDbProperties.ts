@@ -3,6 +3,15 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Property } from "@/lib/mockData";
 import { normalizeMediaUrls } from "@/lib/media";
 
+type PropertyOwnerLookup = {
+  owner_user_id: string | null;
+  owner_name: string | null;
+  owner_phone: string | null;
+  owner_company_name: string | null;
+  owner_email: string | null;
+  owner_avatar_url: string | null;
+};
+
 export function useDbProperties() {
   const [dbProperties, setDbProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
@@ -19,18 +28,17 @@ export function useDbProperties() {
         return;
       }
 
-      // Fetch profiles for all unique user_ids
-      const userIds = [...new Set(propData.map((p) => p.user_id).filter(Boolean))];
-      const { data: profilesData } = userIds.length
-        ? await supabase
-            .from("profiles")
-            .select("user_id, full_name, avatar_url, phone")
-            .in("user_id", userIds)
-        : { data: [] as { user_id: string; full_name: string | null; avatar_url: string | null; phone: string | null }[] };
+      const ownerEntries = await Promise.all(
+        propData.map(async (row) => {
+          const { data } = await supabase.rpc("get_property_owner_details", {
+            p_property_id: row.id,
+          });
 
-      const profileMap = new Map(
-        (profilesData || []).map((p) => [p.user_id, p])
+          return [row.id, (data?.[0] ?? null) as PropertyOwnerLookup | null] as const;
+        })
       );
+
+      const ownerMap = new Map(ownerEntries);
 
       setDbProperties(
         propData.map((row) => {
@@ -45,7 +53,13 @@ export function useDbProperties() {
             row.property_type === "condo"
               ? row.property_type
               : "house";
-          const profile = profileMap.get(row.user_id);
+          const owner = ownerMap.get(row.id);
+          const ownerName = owner?.owner_name || owner?.owner_company_name || "Property Owner";
+          const ownerPhone = owner?.owner_phone || "";
+          const ownerCompany = owner?.owner_company_name || "";
+          const ownerEmail = owner?.owner_email || "";
+          const ownerAvatar = owner?.owner_avatar_url || "/placeholder.svg";
+
           return {
             id: row.id,
             userId: row.user_id,
@@ -65,11 +79,11 @@ export function useDbProperties() {
             features: row.features || [],
             nearbyPlaces: [],
             agent: {
-              name: profile?.full_name || "Property Owner",
-              company: "",
-              phone: profile?.phone || "",
-              email: "",
-              avatar: profile?.avatar_url || "/placeholder.svg",
+              name: ownerName,
+              company: ownerCompany,
+              phone: ownerPhone,
+              email: ownerEmail,
+              avatar: ownerAvatar,
             },
             createdAt: row.created_at || new Date().toISOString(),
             isFeatured: Boolean(row.is_featured),
