@@ -308,6 +308,12 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      delete_property_with_related_records: {
+        Args: {
+          p_property_id: string
+        }
+        Returns: undefined
+      }
       get_property_owner_details: {
         Args: {
           p_property_id: string

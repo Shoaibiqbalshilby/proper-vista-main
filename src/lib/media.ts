@@ -19,6 +19,36 @@ const tryBuildSupabasePublicUrl = (value: string): string | null => {
   return supabase.storage.from(bucket).getPublicUrl(path).data.publicUrl;
 };
 
+const stripQueryAndHash = (value: string) => value.split("?")[0].split("#")[0];
+
+const tryExtractObjectPath = (value: string, bucket: string): string | null => {
+  const clean = stripQueryAndHash(value.trim()).replace(/^\/+/, "");
+  if (!clean) return null;
+
+  if (clean.startsWith(`${bucket}/`)) {
+    return decodeURIComponent(clean.slice(bucket.length + 1));
+  }
+
+  const publicPathSegment = `storage/v1/object/public/${bucket}/`;
+  const publicSegmentIndex = clean.indexOf(publicPathSegment);
+  if (publicSegmentIndex >= 0) {
+    return decodeURIComponent(clean.slice(publicSegmentIndex + publicPathSegment.length));
+  }
+
+  try {
+    const parsed = new URL(value);
+    const marker = `/storage/v1/object/public/${bucket}/`;
+    const markerIndex = parsed.pathname.indexOf(marker);
+    if (markerIndex >= 0) {
+      return decodeURIComponent(parsed.pathname.slice(markerIndex + marker.length));
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+};
+
 export const normalizeMediaUrls = (rawUrls: unknown): string[] => {
   const input = Array.isArray(rawUrls) ? rawUrls : [];
   const normalized: string[] = [];
@@ -52,4 +82,13 @@ export const normalizeMediaUrls = (rawUrls: unknown): string[] => {
 
   const uniqueUrls = Array.from(new Set(normalized));
   return uniqueUrls.length > 0 ? uniqueUrls : ["/placeholder.svg"];
+};
+
+export const extractStorageObjectPaths = (rawUrls: unknown, bucket: string): string[] => {
+  const input = Array.isArray(rawUrls) ? rawUrls : [];
+  const paths = input
+    .map((raw) => (typeof raw === "string" ? tryExtractObjectPath(raw, bucket) : null))
+    .filter((value): value is string => Boolean(value));
+
+  return Array.from(new Set(paths));
 };
