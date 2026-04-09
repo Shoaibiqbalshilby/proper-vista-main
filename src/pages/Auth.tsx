@@ -1,10 +1,15 @@
+<<<<<<< HEAD
 import { useEffect, useState } from "react";
+=======
+import { useState, useEffect } from "react";
+>>>>>>> 5654c9f (feat: improve registration with phone, confirm password, and auto-redirect)
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, CheckCircle, KeyRound, Mail, ShieldCheck } from "lucide-react";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+<<<<<<< HEAD
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
@@ -14,6 +19,10 @@ const RESET_CODE_LENGTH = 8;
 
 type AuthView = "login" | "signup" | "reset";
 type ResetStep = "email" | "otp" | "password" | "success";
+=======
+import { useAuth } from "@/contexts/AuthContext";
+import { CheckCircle } from "lucide-react";
+>>>>>>> 5654c9f (feat: improve registration with phone, confirm password, and auto-redirect)
 
 const Auth = () => {
   const [authView, setAuthView] = useState<AuthView>("login");
@@ -23,6 +32,7 @@ const Auth = () => {
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
+<<<<<<< HEAD
   const [resendLoading, setResendLoading] = useState(false);
   const [signupSuccess, setSignupSuccess] = useState(false);
   const [needsConfirmation, setNeedsConfirmation] = useState(false);
@@ -34,6 +44,9 @@ const Auth = () => {
   const [resetStep, setResetStep] = useState<ResetStep>("email");
   const [resetLoading, setResetLoading] = useState(false);
   const [resetResendLoading, setResetResendLoading] = useState(false);
+=======
+  const [signupSuccess, setSignupSuccess] = useState(false);
+>>>>>>> 5654c9f (feat: improve registration with phone, confirm password, and auto-redirect)
   const { toast } = useToast();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -106,15 +119,29 @@ const Auth = () => {
     toast({ title: "Verification email resent!", description: "Please check your inbox." });
   };
 
+  const switchMode = (login: boolean) => {
+    setIsLogin(login);
+    setEmail("");
+    setPassword("");
+    setConfirmPassword("");
+    setFullName("");
+    setPhone("");
+    setSignupSuccess(false);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!isLogin && password !== confirmPassword) {
+<<<<<<< HEAD
       toast({
         title: "Passwords do not match",
         description: "Please make sure both passwords are the same.",
         variant: "destructive",
       });
+=======
+      toast({ title: "Passwords do not match", description: "Please make sure both passwords are the same.", variant: "destructive" });
+>>>>>>> 5654c9f (feat: improve registration with phone, confirm password, and auto-redirect)
       return;
     }
 
@@ -172,6 +199,10 @@ const Auth = () => {
           toast({ title: "Signup failed", description: error.message, variant: "destructive" });
         }
       } else {
+<<<<<<< HEAD
+=======
+        // If phone was provided, also update the profiles table
+>>>>>>> 5654c9f (feat: improve registration with phone, confirm password, and auto-redirect)
         if (data.user && phone) {
           await supabase
             .from("profiles")
@@ -179,11 +210,19 @@ const Auth = () => {
             .eq("user_id", data.user.id);
         }
 
+<<<<<<< HEAD
+=======
+        // If session is returned immediately (email confirmation disabled), redirect
+>>>>>>> 5654c9f (feat: improve registration with phone, confirm password, and auto-redirect)
         if (data.session) {
           toast({ title: "Account created!", description: `Welcome, ${fullName || email}!` });
           navigate("/");
         } else {
+<<<<<<< HEAD
           setPendingEmail(email);
+=======
+          // Email confirmation required — show success screen
+>>>>>>> 5654c9f (feat: improve registration with phone, confirm password, and auto-redirect)
           setSignupSuccess(true);
         }
       }
@@ -192,6 +231,7 @@ const Auth = () => {
     setLoading(false);
   };
 
+<<<<<<< HEAD
   const handleSendResetCode = async () => {
     const normalizedEmail = resetEmail.trim().toLowerCase();
 
@@ -376,12 +416,16 @@ const Auth = () => {
     );
   }
 
+=======
+  // Success state after signup when email confirmation is required
+>>>>>>> 5654c9f (feat: improve registration with phone, confirm password, and auto-redirect)
   if (signupSuccess) {
     return (
       <main className="container py-16">
         <div className="mx-auto max-w-md text-center">
           <div className="rounded-xl border border-border bg-card p-8 shadow-card">
             <CheckCircle className="mx-auto mb-4 h-16 w-16 text-green-500" />
+<<<<<<< HEAD
             <h1 className="mb-2 font-display text-2xl font-bold text-foreground">Account Created!</h1>
             <p className="mb-2 text-muted-foreground">
               We&apos;ve sent a verification email to <span className="font-medium text-foreground">{pendingEmail}</span>.
@@ -397,6 +441,19 @@ const Auth = () => {
               {resendLoading ? "Sending..." : "Resend Verification Email"}
             </Button>
             <Button variant="outline" className="w-full" onClick={() => switchView("login")}>
+=======
+            <h1 className="font-display text-2xl font-bold text-foreground mb-2">Account Created!</h1>
+            <p className="text-muted-foreground mb-2">
+              We've sent a verification email to <span className="font-medium text-foreground">{email}</span>.
+            </p>
+            <p className="text-sm text-muted-foreground mb-6">
+              Please check your inbox and click the verification link to activate your account. You can then log in on this website and on the mobile app using the same credentials.
+            </p>
+            <Button
+              className="w-full gradient-warm border-0 text-primary-foreground"
+              onClick={() => switchMode(true)}
+            >
+>>>>>>> 5654c9f (feat: improve registration with phone, confirm password, and auto-redirect)
               Go to Sign In
             </Button>
           </div>
@@ -405,6 +462,7 @@ const Auth = () => {
     );
   }
 
+<<<<<<< HEAD
   if (isResetView) {
     return (
       <main className="container py-16">
@@ -632,6 +690,8 @@ const Auth = () => {
     );
   }
 
+=======
+>>>>>>> 5654c9f (feat: improve registration with phone, confirm password, and auto-redirect)
   return (
     <main className="container py-16">
       <div className="mx-auto max-w-md">
@@ -660,9 +720,13 @@ const Auth = () => {
                 />
               </div>
               <div className="space-y-2">
+<<<<<<< HEAD
                 <Label htmlFor="phone">
                   Phone Number <span className="text-xs text-muted-foreground">(optional)</span>
                 </Label>
+=======
+                <Label htmlFor="phone">Phone Number <span className="text-muted-foreground text-xs">(optional)</span></Label>
+>>>>>>> 5654c9f (feat: improve registration with phone, confirm password, and auto-redirect)
                 <Input
                   id="phone"
                   type="tel"
@@ -715,12 +779,20 @@ const Auth = () => {
           )}
 
           {!isLogin && (
+<<<<<<< HEAD
             <p className="rounded-lg bg-muted p-3 text-xs text-muted-foreground">
+=======
+            <p className="text-xs text-muted-foreground rounded-lg bg-muted p-3">
+>>>>>>> 5654c9f (feat: improve registration with phone, confirm password, and auto-redirect)
               After registering on this website, you can also log in to the mobile app using the same email and password.
             </p>
           )}
 
+<<<<<<< HEAD
           <Button type="submit" disabled={loading} className="w-full border-0 gradient-warm text-primary-foreground">
+=======
+          <Button type="submit" disabled={loading} className="w-full gradient-warm border-0 text-primary-foreground">
+>>>>>>> 5654c9f (feat: improve registration with phone, confirm password, and auto-redirect)
             {loading ? "Please wait..." : isLogin ? "Sign In" : "Create Account"}
           </Button>
 
@@ -738,8 +810,13 @@ const Auth = () => {
             {isLogin ? "Don't have an account?" : "Already have an account?"}{" "}
             <button
               type="button"
+<<<<<<< HEAD
               onClick={() => switchView(isLogin ? "signup" : "login")}
               className="font-medium text-primary hover:underline"
+=======
+              onClick={() => switchMode(!isLogin)}
+              className="text-primary font-medium hover:underline"
+>>>>>>> 5654c9f (feat: improve registration with phone, confirm password, and auto-redirect)
             >
               {isLogin ? "Sign Up" : "Sign In"}
             </button>
