@@ -11,6 +11,159 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 
+type SupabaseLikeError = {
+  message?: string;
+  details?: string;
+  hint?: string;
+  code?: string;
+};
+
+type UploadedObject = {
+  bucket: string;
+  path: string;
+  publicUrl: string;
+};
+
+type PropertyInsertPayload = Record<string, unknown>;
+
+const getSupabaseErrorMessage = (error: unknown) => {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  if (error && typeof error === "object") {
+    const supabaseError = error as SupabaseLikeError;
+    const parts = [supabaseError.message, supabaseError.details, supabaseError.hint].filter(Boolean);
+    if (parts.length > 0) {
+      return parts.join(" ");
+    }
+  }
+
+  return "Failed to list property. Please try again.";
+};
+
+const tryExtractUnknownColumn = (errorMessage: string) => {
+  const patterns = [
+    /Could not find the '([^']+)' column/i,
+    /column\s+"?([a-zA-Z0-9_]+)"?\s+does not exist/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = errorMessage.match(pattern);
+    if (match?.[1]) {
+      return match[1];
+    }
+  }
+
+  return null;
+};
+
+const isBucketNotFoundError = (error: unknown) => {
+  const message = getSupabaseErrorMessage(error).toLowerCase();
+  return message.includes("bucket not found") || message.includes("not found");
+};
+
+const configuredBucket = (import.meta.env.VITE_PROPERTY_MEDIA_BUCKET || "").trim();
+const fallbackBuckets = [configuredBucket, "property-images", "property-media", "property_media"].filter(
+  (bucket, index, arr): bucket is string => Boolean(bucket) && arr.indexOf(bucket) === index,
+);
+
+const generateUploadId = () => {
+  const cryptoObj = globalThis.crypto;
+  if (cryptoObj?.randomUUID) {
+    return cryptoObj.randomUUID();
+  }
+
+  if (cryptoObj?.getRandomValues) {
+    const bytes = cryptoObj.getRandomValues(new Uint8Array(16));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0"));
+    return `${hex.slice(0, 4).join("")}-${hex.slice(4, 6).join("")}-${hex.slice(6, 8).join("")}-${hex.slice(8, 10).join("")}-${hex.slice(10, 16).join("")}`;
+  }
+
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+};
+
+const uploadSingleFile = async (file: File, path: string): Promise<UploadedObject> => {
+  let lastError: unknown = null;
+
+  for (const bucket of fallbackBuckets) {
+    const { data, error } = await supabase.storage.from(bucket).upload(path, file, {
+      cacheControl: "3600",
+      upsert: false,
+    });
+
+    if (error || !data?.path) {
+      lastError = error || new Error("Upload failed");
+      if (isBucketNotFoundError(lastError)) {
+        continue;
+      }
+      throw lastError;
+    }
+
+    const { data: publicData } = supabase.storage.from(bucket).getPublicUrl(data.path);
+    return {
+      bucket,
+      path: data.path,
+      publicUrl: publicData.publicUrl,
+    };
+  }
+
+  throw lastError || new Error("Media storage bucket not found");
+};
+
+const buildPaymentFrequency = (listingType: string) => {
+  if (listingType === "rent") return { rent: "monthly" };
+  if (listingType === "short-let") return { short_let: "nightly" };
+  return null;
+};
+
+const splitLocation = (value: string) => {
+  const parts = value
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  return {
+    city: parts[0] || value || "Unknown",
+    state: parts[1] || "Unknown",
+  };
+};
+
+const insertPropertyWithCompatibility = async (payloadCandidates: PropertyInsertPayload[]) => {
+  let lastError: unknown = null;
+
+  for (const candidate of payloadCandidates) {
+    const payload: PropertyInsertPayload = { ...candidate };
+
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      const { data, error } = await supabase
+        .from("properties")
+        .insert(payload)
+        .select("id")
+        .single();
+
+      if (!error) {
+        return data?.id ?? null;
+      }
+
+      const message = getSupabaseErrorMessage(error);
+      const unknownColumn = tryExtractUnknownColumn(message);
+
+      if (unknownColumn && unknownColumn in payload) {
+        delete payload[unknownColumn];
+        continue;
+      }
+
+      lastError = error;
+      break;
+    }
+  }
+
+  throw lastError || new Error("Failed to insert property");
+};
+
 const ListProperty = () => {
   const { toast } = useToast();
   const { user, loading } = useAuth();
@@ -77,36 +230,71 @@ const ListProperty = () => {
 
   const uploadFilesToStorage = async (files: File[], folder: "images" | "videos") => {
     const uploadedUrls: string[] = [];
+    const uploadedObjects: UploadedObject[] = [];
 
     for (const file of files) {
       const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-      const path = `${user?.id}/${folder}/${Date.now()}-${crypto.randomUUID()}-${safeName}`;
+      const path = `${user?.id}/${folder}/${Date.now()}-${generateUploadId()}-${safeName}`;
 
-      const { data, error } = await supabase.storage.from("property-media").upload(path, file, {
-        cacheControl: "3600",
-        upsert: false,
-      });
-
-      if (error || !data?.path) {
-        throw error || new Error("Upload failed");
-      }
-
-      const { data: publicData } = supabase.storage.from("property-media").getPublicUrl(data.path);
-      uploadedUrls.push(publicData.publicUrl);
+      const uploadedObject = await uploadSingleFile(file, path);
+      uploadedUrls.push(uploadedObject.publicUrl);
+      uploadedObjects.push(uploadedObject);
     }
 
-    return uploadedUrls;
+    return { uploadedUrls, uploadedObjects };
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !propertyType || !listingType) return;
+    if (!user || !propertyType || !listingType) {
+      toast({
+        title: "Missing required details",
+        description: "Please complete property type and listing type before submitting.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const uploadedObjectsForRollback: UploadedObject[] = [];
+    let skippedMediaBecauseBucketMissing = false;
 
     setSubmitting(true);
     try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session) {
+        throw new Error("Your session expired. Please sign in again and retry.");
+      }
+
       const priceNum = Number(price);
-      const uploadedImageUrls = await uploadFilesToStorage(images.map((img) => img.file), "images");
-      const uploadedVideoUrls = await uploadFilesToStorage(videos.map((vid) => vid.file), "videos");
+      if (!Number.isFinite(priceNum) || priceNum <= 0) {
+        throw new Error("Please enter a valid price greater than zero.");
+      }
+
+      let uploadedImageUrls: string[] = [];
+      let uploadedVideoUrls: string[] = [];
+
+      try {
+        const imageUpload = await uploadFilesToStorage(images.map((img) => img.file), "images");
+        uploadedObjectsForRollback.push(...imageUpload.uploadedObjects);
+
+        const videoUpload = await uploadFilesToStorage(videos.map((vid) => vid.file), "videos");
+        uploadedObjectsForRollback.push(...videoUpload.uploadedObjects);
+
+        uploadedImageUrls = imageUpload.uploadedUrls;
+        uploadedVideoUrls = videoUpload.uploadedUrls;
+      } catch (mediaError) {
+        if (!isBucketNotFoundError(mediaError)) {
+          throw mediaError;
+        }
+
+        skippedMediaBecauseBucketMissing = true;
+        uploadedImageUrls = [];
+        uploadedVideoUrls = [];
+      }
+
       let computedArea = Number(area) || 0;
       const landFeatures: string[] = [];
       if (propertyType === "land" && landSize) {
@@ -117,7 +305,50 @@ const ListProperty = () => {
         else if (landUnit === "acres") computedArea = Math.round(size * 43560);
         else if (landUnit === "hectares") computedArea = Math.round(size * 107639);
       }
-      const { error } = await supabase.from("properties").insert({
+
+      const { city, state } = splitLocation(location);
+      const metadata = (user.user_metadata || {}) as Record<string, unknown>;
+      const listerName = typeof metadata.full_name === "string" && metadata.full_name.trim().length > 0
+        ? metadata.full_name
+        : "Property Owner";
+
+      const modernPayload: PropertyInsertPayload = {
+        user_id: user.id,
+        title,
+        price: priceNum,
+        address: location,
+        city,
+        state,
+        zip_code: "000000",
+        description,
+        bedrooms: Number(bedrooms) || 0,
+        bathrooms: Number(bathrooms) || 0,
+        square_feet: computedArea,
+        images: uploadedImageUrls,
+        is_featured: false,
+        property_type: propertyType,
+        amenities: landFeatures,
+        year_built: new Date().getFullYear(),
+        latitude: 6.5244,
+        longitude: 3.3792,
+        listing_type: listingType,
+        payment_frequency: buildPaymentFrequency(listingType),
+        listing_status: "available",
+        land_details: propertyType === "land"
+          ? { unit: landUnit, size: Number(landSize) || 0 }
+          : null,
+        lister: {
+          name: listerName,
+          phone: typeof metadata.phone === "string" ? metadata.phone : "",
+          address: location,
+          whatsapp: typeof metadata.phone === "string" ? metadata.phone : "",
+          companyName: typeof metadata.company_name === "string" ? metadata.company_name : "",
+          description: "",
+        },
+        nearby_facilities: [],
+      };
+
+      const legacyPayload: PropertyInsertPayload = {
         user_id: user.id,
         title,
         description,
@@ -131,18 +362,20 @@ const ListProperty = () => {
         bathrooms: Number(bathrooms) || 0,
         area: computedArea,
         images: uploadedImageUrls,
-        videos: uploadedVideoUrls,
         features: landFeatures,
-      });
+        videos: uploadedVideoUrls,
+        status: "available",
+      };
 
-      if (error) throw error;
+      let insertedPropertyId: string | null = null;
+      insertedPropertyId = await insertPropertyWithCompatibility([modernPayload, legacyPayload]);
 
       // Check property alerts for matching users
       const priceNum2 = Number(price);
       supabase.functions.invoke("check-property-alerts", {
         body: {
           property: {
-            id: crypto.randomUUID(),
+            id: insertedPropertyId || generateUploadId(),
             title,
             location,
             listing_type: listingType,
@@ -157,10 +390,35 @@ const ListProperty = () => {
       }).catch(console.error);
 
       setSubmitted(true);
-      toast({ title: "Property Listed!", description: "Your property is now live on ProperAvista." });
-    } catch (error: any) {
+      toast({
+        title: skippedMediaBecauseBucketMissing ? "Property Listed (Without Media)" : "Property Listed!",
+        description: skippedMediaBecauseBucketMissing
+          ? "Your details were saved, but image/video upload was skipped because Supabase media bucket is missing."
+          : "Your property is now live on ProperAvista.",
+      });
+    } catch (error: unknown) {
       console.error("Error listing property:", error);
-      toast({ title: "Error", description: "Failed to list property. Please try again.", variant: "destructive" });
+      if (uploadedObjectsForRollback.length > 0) {
+        const bucketToPaths = new Map<string, string[]>();
+        for (const item of uploadedObjectsForRollback) {
+          const existing = bucketToPaths.get(item.bucket) || [];
+          existing.push(item.path);
+          bucketToPaths.set(item.bucket, existing);
+        }
+
+        for (const [bucket, paths] of bucketToPaths.entries()) {
+          const { error: cleanupError } = await supabase.storage.from(bucket).remove(paths);
+          if (cleanupError) {
+            console.error("Failed to rollback uploaded files:", cleanupError);
+          }
+        }
+      }
+
+      toast({
+        title: "Error",
+        description: getSupabaseErrorMessage(error),
+        variant: "destructive",
+      });
     } finally {
       setSubmitting(false);
     }
