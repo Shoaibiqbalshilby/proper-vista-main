@@ -325,6 +325,8 @@ const ListProperty = () => {
         bathrooms: Number(bathrooms) || 0,
         square_feet: computedArea,
         images: uploadedImageUrls,
+        videos: uploadedVideoUrls,
+        video_url: uploadedVideoUrls[0] || null,
         is_featured: false,
         property_type: propertyType,
         amenities: landFeatures,
@@ -364,6 +366,7 @@ const ListProperty = () => {
         images: uploadedImageUrls,
         features: landFeatures,
         videos: uploadedVideoUrls,
+        video_url: uploadedVideoUrls[0] || null,
         status: "available",
       };
 
